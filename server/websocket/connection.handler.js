@@ -22,6 +22,10 @@ async function authenticateUpgradeRequest(req) {
     throw new Error("User no longer exists");
   }
 
+  if (user.accountDisabled) {
+    throw new Error("Account disabled");
+  }
+
   return user;
 }
 

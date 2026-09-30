@@ -23,8 +23,14 @@ const protect = asyncHandler(async (req, res, next) => {
     throw new AppError("User no longer exists", 401);
   }
 
-  req.user = user; // attach for downstream controllers
+  // A disabled account must lose access immediately, not only at next login.
+  if (user.accountDisabled) {
+    throw new AppError("Your account has been disabled", 403);
+  }
+
+  req.user = user; // attach for downstream controllers (includes user.role)
   next();
 });
 
 module.exports = protect;
+module.exports.authenticateUser = protect; // alias: authenticateUser -> requireAdmin

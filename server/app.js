@@ -9,6 +9,7 @@ const conversationRoutes = require("./routes/conversation.routes");
 const messageRoutes = require("./routes/message.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const pushRoutes = require("./routes/push.routes");
+const adminRoutes = require("./routes/admin.routes");
 const errorMiddleware = require("./middleware/error.middleware");
 const { CLIENT_URL } = require("./config/env");
 
@@ -33,6 +34,7 @@ app.use("/api/conversations", conversationRoutes);
 app.use("/api/conversations/:conversationId/messages", messageRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/push", pushRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Must be the LAST app.use — Express identifies error middleware by arity (4 args)

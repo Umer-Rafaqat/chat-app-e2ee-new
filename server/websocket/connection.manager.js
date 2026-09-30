@@ -74,6 +74,26 @@ function isConversationActive(userId, conversationId) {
   return current.activeConversationId === conversationId.toString();
 }
 
+function sendToUser(userId, payload) {
+  const ws = getConnection(userId);
+
+  if (ws && ws.readyState === ws.OPEN) {
+    ws.send(JSON.stringify(payload));
+    return true;
+  }
+
+  return false;
+}
+
+// Force-close a user's socket (account disabled, etc.).
+function disconnectUser(userId, code = 4003, reason = "Access revoked") {
+  const ws = getConnection(userId);
+
+  if (ws && ws.readyState === ws.OPEN) {
+    ws.close(code, reason);
+  }
+}
+
 function onlineCount() {
   return connections.size;
 }
@@ -85,5 +105,7 @@ module.exports = {
   setActiveConversation,
   clearActiveConversation,
   isConversationActive,
+  sendToUser,
+  disconnectUser,
   onlineCount,
 };

@@ -1,17 +1,20 @@
 const mongoose = require("mongoose");
 const Conversation = require("../models/Conversation");
+const User = require("../models/User");
+const Message = require("../models/Message");
+const Notification = require("../models/Notification");
 const AppError = require("../utils/AppError");
 
 async function getUserConversations(userId) {
   return Conversation.find({ participants: userId })
-    .populate("participants", "name email")
+    .populate("participants", "name email publicKey")
     .sort({ updatedAt: -1 });
 }
 
 async function getConversationById(conversationId, userId) {
   const conversation = await Conversation.findById(conversationId).populate(
     "participants",
-    "name email",
+    "name email publicKey",
   );
 
   if (!conversation) {
@@ -47,7 +50,7 @@ async function findOrCreateConversation(userId, otherUserId) {
 
   return Conversation.populate(conversation, {
     path: "participants",
-    select: "name email",
+    select: "name email publicKey",
   });
 }
 
@@ -63,11 +66,63 @@ async function createGroupConversation(ownerId, name, participantIds = []) {
     throw new AppError("A group requires at least two members", 400);
   }
 
-  return Conversation.create({
+  // Every member must be a real, enabled user.
+  const validCount = await User.countDocuments({
+    _id: { $in: participants },
+    accountDisabled: false,
+  });
+  if (validCount !== participants.length) {
+    throw new AppError("One or more selected members are invalid", 400);
+  }
+
+  const group = await Conversation.create({
     name: name?.trim() || "New Group",
     participants,
     isGroup: true,
   });
+
+  return group.populate("participants", "name email publicKey");
+}
+
+// Admin: every group, regardless of membership.
+async function getAllGroups() {
+  return Conversation.find({ isGroup: true })
+    .populate("participants", "name email publicKey")
+    .sort({ updatedAt: -1 });
+}
+
+async function renameGroup(groupId, name) {
+  const group = await Conversation.findOneAndUpdate(
+    { _id: groupId, isGroup: true },
+    { name: name.trim() },
+    { returnDocument: "after", runValidators: true },
+  ).populate("participants", "name email publicKey");
+
+  if (!group) {
+    throw new AppError("Group not found", 404);
+  }
+
+  return group;
+}
+
+async function deleteGroup(groupId) {
+  const group = await Conversation.findOneAndDelete({
+    _id: groupId,
+    isGroup: true,
+  });
+
+  if (!group) {
+    throw new AppError("Group not found", 404);
+  }
+
+  // Conversation is gone first; children are cleaned up after so a crash
+  // can only leave harmless orphans, never a group without its history.
+  await Promise.all([
+    Message.deleteMany({ conversation: groupId }),
+    Notification.deleteMany({ conversation: groupId }),
+  ]);
+
+  return { conversationId: group._id.toString(), participantIds: group.participants.map(String) };
 }
 
 module.exports = {
@@ -75,4 +130,7 @@ module.exports = {
   getConversationById,
   findOrCreateConversation,
   createGroupConversation,
+  getAllGroups,
+  renameGroup,
+  deleteGroup,
 };

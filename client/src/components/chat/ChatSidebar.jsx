@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import ConversationList from "../ConversationList";
 import Avatar from "./Avatar";
 import Icon from "./Icon";
@@ -8,6 +9,7 @@ function ChatSidebar({
   activeConversation,
   currentUserId,
   currentUser,
+  isAdmin = false,
   onSelectConversation,
   onSelectUser,
   onCreateGroup,
@@ -34,15 +36,17 @@ function ChatSidebar({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onCreateGroup}
-            className="icon-button border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
-            title="Create group"
-            aria-label="Create group"
-          >
-            <Icon name="plus" size={18} />
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={onCreateGroup}
+              className="icon-button border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+              title="Create group"
+              aria-label="Create group"
+            >
+              <Icon name="plus" size={18} />
+            </button>
+          )}
         </div>
 
         <div className="relative mt-5">
@@ -57,14 +61,25 @@ function ChatSidebar({
           />
         </div>
 
-        <button
-          type="button"
-          onClick={onCreateGroup}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99]"
-        >
-          <Icon name="plus" size={16} />
-          New group
-        </button>
+        {isAdmin && (
+          <>
+            <button
+              type="button"
+              onClick={onCreateGroup}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99]"
+            >
+              <Icon name="plus" size={16} />
+              New group
+            </button>
+            <Link
+              to="/admin"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+            >
+              <Icon name="users" size={16} />
+              Admin Panel
+            </Link>
+          </>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">

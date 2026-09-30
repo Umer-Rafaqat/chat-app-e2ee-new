@@ -1,4 +1,5 @@
 const Message = require("../models/Message");
+const AppError = require("../utils/AppError");
 
 const conversationService = require("./conversation.service");
 
@@ -13,7 +14,12 @@ async function createMessage({
 
   senderId,
 
-  content = "",
+  // Encrypted text message (every new text message uses this path — the
+  // server stores ciphertext only and never sees the plaintext).
+  encrypted = false,
+  ciphertext = null,
+  iv = null,
+  keys = null,
 
   imageUrl = null,
 }) {
@@ -23,19 +29,38 @@ async function createMessage({
     senderId,
   );
 
+  if (encrypted) {
+    // Defense in depth: the client picks recipients, but the server still
+    // checks every CURRENT participant got a wrapped copy of the key —
+    // it can't verify the crypto is correct, only that nobody was skipped.
+    const participantIds = conversation.participants.map((p) => p._id.toString());
+    const coveredIds = new Set(Object.keys(keys || {}));
+    const missing = participantIds.filter((id) => !coveredIds.has(id));
+
+    if (missing.length > 0) {
+      throw new AppError(
+        "Message is not encrypted for every current participant",
+        400,
+      );
+    }
+  }
+
   const message = await Message.create({
     conversation: conversationId,
 
     sender: senderId,
 
-    content,
+    encrypted,
+    ciphertext,
+    iv,
+    keys,
 
     imageUrl,
 
     messageType: imageUrl ? "image" : "text",
   });
 
-  await message.populate("sender", "name email");
+  await message.populate("sender", "name email publicKey");
 
   const participantIds = conversation.participants.map((participant) =>
     participant._id ? participant._id.toString() : participant.toString(),
@@ -64,8 +89,10 @@ async function createMessage({
       ),
   );
 
-  const notificationContent =
-    content || (imageUrl ? "Sent an image" : "New message");
+  // The server cannot read encrypted content, so the notification/push
+  // preview is always generic for text messages — never a guess, never a
+  // leak. Only the (unencrypted) image case gets a specific label.
+  const notificationContent = imageUrl ? "Sent an image" : "New message";
 
   /*
    * Save persistent in-app notifications.
@@ -146,7 +173,7 @@ async function getMessagesForConversation(conversationId, userId) {
   return Message.find({
     conversation: conversationId,
   })
-    .populate("sender", "name email")
+    .populate("sender", "name email publicKey")
     .sort({
       createdAt: 1,
     });

@@ -29,18 +29,14 @@ export function WebSocketProvider({ children }) {
     };
   }, [user, service]);
 
+  // `data` is either:
+  //   { imageUrl }                     for type "image" (not E2EE'd)
+  //   { ciphertext, iv, keys }         for type "message" (E2EE'd — see lib/e2ee.js)
+  // This component stays crypto-agnostic; it just forwards whatever the
+  // caller already encrypted.
   const sendMessage = useCallback(
-    (conversationId, content, imageUrl = null) => {
-      service.send({
-        type: imageUrl ? "image" : "message",
-
-        conversationId,
-
-        data: {
-          content,
-          imageUrl,
-        },
-      });
+    (conversationId, data, type = "message") => {
+      service.send({ type, conversationId, data });
     },
     [service],
   );

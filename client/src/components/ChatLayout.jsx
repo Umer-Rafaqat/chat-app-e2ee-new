@@ -13,6 +13,7 @@ function ChatLayout({
   messages,
   currentUserId,
   currentUser,
+  isAdmin = false,
   knownUsers,
   connectionStatus,
   notifications = [],
@@ -37,6 +38,7 @@ function ChatLayout({
         activeConversation={activeConversation}
         currentUserId={currentUserId}
         currentUser={currentUser}
+        isAdmin={isAdmin}
         onSelectConversation={onSelectConversation}
         onSelectUser={onSelectUser}
         onCreateGroup={() => setIsGroupModalOpen(true)}
@@ -87,7 +89,7 @@ function ChatLayout({
         )}
       </main>
 
-      {isGroupModalOpen && (
+      {isAdmin && isGroupModalOpen && (
         <CreateGroupModal
           users={users}
           currentUserId={currentUserId}

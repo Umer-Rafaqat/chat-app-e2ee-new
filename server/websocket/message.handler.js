@@ -1,6 +1,7 @@
 const messageService = require("../services/message.service");
 const conversationService = require("../services/conversation.service");
 const connectionManager = require("./connection.manager");
+const handleGroupEvent = require("./group.handler");
 
 function send(ws, payload) {
   if (ws && ws.readyState === ws.OPEN) {
@@ -23,6 +24,14 @@ async function handleMessage(ws, senderId, raw) {
   }
 
   const { type, conversationId, data = {} } = parsed;
+
+  /*
+   * Admin-only group management (group:create | group:update | group:delete).
+   * Authorization is enforced inside the handler from the database.
+   */
+  if (typeof type === "string" && type.startsWith("group:")) {
+    return handleGroupEvent(ws, senderId, { type, conversationId, data });
+  }
 
   /*
    * User opened a conversation.
@@ -81,26 +90,66 @@ async function handleMessage(ws, senderId, raw) {
     });
   }
 
-  const content = data?.content?.trim() || "";
-
-  const imageUrl = type === "image" ? data.imageUrl : null;
-
-  if (!conversationId || (!content && !imageUrl)) {
+  if (!conversationId) {
     return send(ws, {
       type: "error",
-      data: {
-        message: "conversationId and message data are required",
-      },
+      data: { message: "conversationId is required" },
     });
   }
 
-  if (content.length > 2000) {
-    return send(ws, {
-      type: "error",
-      data: {
-        message: "Message too long",
-      },
-    });
+  // `data` sent by the client for each event type:
+  //   image   -> { imageUrl }                          (unencrypted — see note below)
+  //   message -> { ciphertext, iv, keys }               (E2EE — server never sees plaintext)
+  let payload;
+
+  if (type === "image") {
+    // Images are NOT end-to-end encrypted yet — only text messages are.
+    // Uploaded via the existing REST /upload endpoint before this event.
+    if (!data?.imageUrl) {
+      return send(ws, {
+        type: "error",
+        data: { message: "imageUrl is required" },
+      });
+    }
+    payload = { imageUrl: data.imageUrl };
+  } else {
+    // type === "message": every text message must already be encrypted
+    // client-side. The server has no decryption key and cannot fall back
+    // to reading plaintext.
+    const { ciphertext, iv, keys } = data || {};
+
+    if (
+      !ciphertext ||
+      !iv ||
+      !keys ||
+      typeof keys !== "object" ||
+      Object.keys(keys).length === 0
+    ) {
+      return send(ws, {
+        type: "error",
+        data: {
+          message: "Message must be encrypted (ciphertext, iv and keys are required)",
+        },
+      });
+    }
+
+    // Base64 ciphertext of a 2000-char message is comfortably under this;
+    // this just stops abusively large payloads, not legitimate ones.
+    if (ciphertext.length > 8000) {
+      return send(ws, {
+        type: "error",
+        data: { message: "Message too long" },
+      });
+    }
+
+    if (Object.keys(keys).length > 500) {
+      return send(ws, {
+        type: "error",
+        data: { message: "Too many recipients" },
+      });
+    }
+
+    payload = { encrypted: true, ciphertext, iv, keys };
   }
 
   try {
@@ -108,8 +157,7 @@ async function handleMessage(ws, senderId, raw) {
       await messageService.createMessage({
         conversationId,
         senderId,
-        content,
-        imageUrl,
+        ...payload,
       });
 
     /*

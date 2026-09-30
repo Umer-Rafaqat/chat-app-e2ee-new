@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 
 const User = require("../models/User");
 const AppError = require("../utils/AppError");
+const { ROLES } = require("../config/roles");
 
 const { JWT_SECRET, JWT_EXPIRES_IN } = require("../config/env");
 const SALT_ROUNDS = 12;
@@ -43,10 +44,12 @@ async function registerUser({ name, email, password }) {
 
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
+  // role is set explicitly so it can never come from the request payload.
   const user = await User.create({
     name,
     email: normalizedEmail,
     password: hashedPassword,
+    role: ROLES.USER,
   });
 
   const token = signToken(user._id);
@@ -58,6 +61,8 @@ async function registerUser({ name, email, password }) {
       id: user._id,
       name: user.name,
       email: user.email,
+      role: user.role,
+      publicKey: user.publicKey,
     },
   };
 }
@@ -160,6 +165,8 @@ async function loginUser({ email, password }) {
       id: user._id,
       name: user.name,
       email: user.email,
+      role: user.role,
+      publicKey: user.publicKey,
     },
   };
 }

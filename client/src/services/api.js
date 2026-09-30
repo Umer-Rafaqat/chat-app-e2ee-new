@@ -55,6 +55,13 @@ export const api = {
 
   getMe: () => request("/auth/me"),
 
+  // E2EE: upload/replace this user's public key.
+  updatePublicKey: (publicKey) =>
+    request("/users/me/public-key", {
+      method: "PUT",
+      body: JSON.stringify({ publicKey }),
+    }),
+
   getUsers: () => request("/users"),
 
   getConversations: () => request("/conversations"),
@@ -75,6 +82,48 @@ export const api = {
         participantIds,
       }),
     }),
+
+  // -------------------------
+  // Group management (admin only — enforced by the server)
+  // -------------------------
+
+  updateGroup: (conversationId, name) =>
+    request(`/conversations/${conversationId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+
+  deleteGroup: (conversationId) =>
+    request(`/conversations/${conversationId}`, { method: "DELETE" }),
+
+  // -------------------------
+  // Admin panel (admin only — enforced by the server)
+  // -------------------------
+
+  getAdminStats: () => request("/admin/stats"),
+
+  getAdminUsers: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== "" && v != null),
+    ).toString();
+    return request(`/admin/users${qs ? `?${qs}` : ""}`);
+  },
+
+  getAdminUser: (id) => request(`/admin/users/${id}`),
+
+  updateUserStatus: (id, accountDisabled) =>
+    request(`/admin/users/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ accountDisabled }),
+    }),
+
+  updateUserRole: (id, role) =>
+    request(`/admin/users/${id}/role`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    }),
+
+  getAdminGroups: () => request("/admin/groups"),
 
   getMessages: (conversationId) =>
     request(`/conversations/${conversationId}/messages`),
