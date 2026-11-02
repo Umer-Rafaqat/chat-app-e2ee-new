@@ -3,6 +3,10 @@ const AppError = require("../utils/AppError");
 function errorMiddleware(err, req, res, next) {
   let error = err;
 
+  if (err.code === "LIMIT_FILE_SIZE") {
+    error = new AppError("Image must be 4MB or smaller", 413);
+  }
+
   if (err.code === 11000) {
     error = new AppError("Duplicate value — resource already exists", 409);
   }

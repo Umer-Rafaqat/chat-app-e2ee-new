@@ -1,16 +1,20 @@
 const mongoose = require("mongoose");
 const { MONGO_URI } = require("./env");
-const Conversation = require("../models/Conversation");
+
+let connecting;
 
 async function connectDB() {
-  try {
-    await mongoose.connect(MONGO_URI);
-    await Conversation.syncIndexes();
-    console.log("MongoDB connected");
-  } catch (error) {
-    console.error("MongoDB connection failed:", error.message);
-    process.exit(1);
-  }
+  if (mongoose.connection.readyState === 1) return;
+
+  const attempt =
+    (connecting ??= mongoose.connect(MONGO_URI).catch((error) => {
+      connecting = undefined;
+      throw error;
+    }));
+
+  await attempt;
+  if (connecting === attempt) connecting = undefined;
+  console.log("MongoDB connected");
 }
 
 module.exports = connectDB;

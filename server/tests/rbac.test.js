@@ -11,6 +11,9 @@ process.env.JWT_SECRET = "test-secret";
 process.env.FIREBASE_PROJECT_ID = "x";
 process.env.FIREBASE_CLIENT_EMAIL = "x@x";
 process.env.FIREBASE_PRIVATE_KEY = "x";
+process.env.CLOUDINARY_CLOUD_NAME = "test-cloud";
+process.env.CLOUDINARY_API_KEY = "x";
+process.env.CLOUDINARY_API_SECRET = "x";
 process.env.NODE_ENV = "test";
 
 const test = require("node:test");
@@ -166,6 +169,46 @@ const api = () => request(server);
 const as = (u) => ({ Cookie: cookieFor(u) });
 
 /* ------------------------------ HTTP: auth ------------------------------ */
+test("GET /health is public and does not require a database", async () => {
+  const res = await api().get("/health");
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { ok: true });
+});
+
+test("image upload returns Cloudinary secure_url in the existing response shape", async () => {
+  const cloudinary = require("../config/cloudinary");
+  const originalUploadStream = cloudinary.uploader.upload_stream;
+  const imageUrl = "https://res.cloudinary.com/test-cloud/image/upload/test.png";
+
+  cloudinary.uploader.upload_stream = (options, callback) => {
+    assert.equal(options.folder, "chat-app");
+    return {
+      end(buffer) {
+        assert.ok(Buffer.isBuffer(buffer));
+        callback(null, { secure_url: imageUrl });
+      },
+    };
+  };
+
+  try {
+    const res = await api()
+      .post(`/api/conversations/${someId}/messages/upload`)
+      .set(as(alice))
+      .attach("image", Buffer.from("image"), {
+        filename: "image.png",
+        contentType: "image/png",
+      });
+
+    assert.equal(res.status, 201);
+    assert.deepEqual(res.body, {
+      success: true,
+      data: { imageUrl },
+    });
+  } finally {
+    cloudinary.uploader.upload_stream = originalUploadStream;
+  }
+});
+
 test("signup always creates role=user, even if body asks for admin", async () => {
   const res = await api()
     .post("/api/auth/register")
@@ -193,6 +236,35 @@ test("disabled account is rejected on every request (403)", async () => {
   const eve = makeUser("eve", "user", { accountDisabled: true });
   const res = await api().get("/api/conversations").set(as(eve));
   assert.equal(res.status, 403);
+});
+
+test("image upload rejects unsupported MIME types", async () => {
+  const res = await api()
+    .post(`/api/conversations/${someId}/messages/upload`)
+    .set(as(alice))
+    .attach("image", Buffer.from("not an image"), {
+      filename: "image.svg",
+      contentType: "image/svg+xml",
+    });
+
+  assert.equal(res.status, 400);
+  assert.equal(
+    res.body.message,
+    "Only JPEG, PNG, WebP, and GIF images are allowed",
+  );
+});
+
+test("image upload rejects files larger than 4MB", async () => {
+  const res = await api()
+    .post(`/api/conversations/${someId}/messages/upload`)
+    .set(as(alice))
+    .attach("image", Buffer.alloc(4 * 1024 * 1024 + 1), {
+      filename: "image.png",
+      contentType: "image/png",
+    });
+
+  assert.equal(res.status, 413);
+  assert.equal(res.body.message, "Image must be 4MB or smaller");
 });
 
 /* ------------------- HTTP: admin-only endpoints (matrix) ------------------- */
@@ -285,7 +357,12 @@ test("admin can change another user's role/status, but not their own", async () 
 /* --------------------------- WebSocket events --------------------------- */
 function connect(user) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${port}`, { headers: { Cookie: cookieFor(user) } });
+    const ws = new WebSocket(`ws://localhost:${port}`, {
+      headers: {
+        Cookie: cookieFor(user),
+        Origin: "http://localhost:5173",
+      },
+    });
     ws.inbox = [];
     ws.on("message", (raw) => ws.inbox.push(JSON.parse(raw.toString())));
     ws.on("open", () => resolve(ws));
@@ -304,9 +381,36 @@ const waitFor = async (ws, pred, ms = 1500) => {
 
 test("WS: connection without a valid cookie is rejected", async () => {
   await assert.rejects(new Promise((res, rej) => {
-    const ws = new WebSocket(`ws://localhost:${port}`);
+    const ws = new WebSocket(`ws://localhost:${port}`, {
+      headers: { Origin: "http://localhost:5173" },
+    });
     ws.on("open", res); ws.on("error", rej);
   }));
+});
+
+test("WS: null JSON payload returns an error without closing the connection", async () => {
+  const ws = await connect(alice);
+  ws.send("null");
+
+  const response = await waitFor(ws, (message) => message.type === "error");
+  assert.equal(response?.data.message, "Message payload must be an object");
+  assert.equal(ws.readyState, WebSocket.OPEN);
+  ws.close();
+});
+
+test("WS: rejects image URLs that are not hosted by the configured Cloudinary cloud", async () => {
+  const ws = await connect(alice);
+  ws.send(
+    JSON.stringify({
+      type: "image",
+      conversationId: String(new mongoose.Types.ObjectId()),
+      data: { imageUrl: "https://example.com/image.png" },
+    }),
+  );
+
+  const response = await waitFor(ws, (message) => message.type === "error");
+  assert.equal(response?.data.message, "A valid Cloudinary image URL is required");
+  ws.close();
 });
 
 test("WS: normal user's group:create/update/delete are rejected with 403 (payload role ignored)", async () => {

@@ -11,6 +11,12 @@ class WebSocketService {
 
     this.statusListeners = new Set();
 
+    this.reconnectAttempts = 0;
+
+    this.reconnectTimer = null;
+
+    this.manualClose = false;
+
     /*
      * Conversation currently visible
      * to this user.
@@ -19,12 +25,29 @@ class WebSocketService {
   }
 
   connect() {
+    this.manualClose = false;
+
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.CONNECTING ||
+        this.ws.readyState === WebSocket.OPEN)
+    ) {
+      return;
+    }
+
     this._emitStatus("connecting");
 
-    this.ws = new WebSocket(this.url);
-    this.ws.binaryType = "arraybuffer";
+    const ws = new WebSocket(this.url);
+    this.ws = ws;
+    ws.binaryType = "arraybuffer";
 
-    this.ws.onopen = () => {
+    ws.onopen = () => {
+      if (this.ws !== ws) return;
+
+      this.reconnectAttempts = 0;
       this._emitStatus("connected");
 
       /*
@@ -35,15 +58,27 @@ class WebSocketService {
       this._sendActiveConversation();
     };
 
-    this.ws.onclose = () => {
+    ws.onclose = () => {
+      if (this.ws !== ws) return;
+
+      this.ws = null;
       this._emitStatus("disconnected");
+
+      if (!this.manualClose) {
+        const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 15000);
+        this.reconnectAttempts += 1;
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          this.connect();
+        }, delay);
+      }
     };
 
-    this.ws.onerror = (err) => {
+    ws.onerror = (err) => {
       console.error("WebSocket error:", err);
     };
 
-    this.ws.onmessage = (event) => {
+    ws.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
         this.messageListeners.forEach((listener) =>
           listener({ type: "call:audio", data: event.data }),
@@ -64,6 +99,10 @@ class WebSocketService {
   }
 
   disconnect() {
+    this.manualClose = true;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+
     this.ws?.close();
 
     this.ws = null;

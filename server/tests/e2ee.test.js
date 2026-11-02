@@ -13,6 +13,9 @@ process.env.JWT_SECRET = "test-secret";
 process.env.FIREBASE_PROJECT_ID = "x";
 process.env.FIREBASE_CLIENT_EMAIL = "x@x";
 process.env.FIREBASE_PRIVATE_KEY = "x";
+process.env.CLOUDINARY_CLOUD_NAME = "test-cloud";
+process.env.CLOUDINARY_API_KEY = "x";
+process.env.CLOUDINARY_API_SECRET = "x";
 process.env.NODE_ENV = "test";
 
 const test = require("node:test");
@@ -213,7 +216,12 @@ async function decryptAsRecipient(message, myPrivateKey, myUserId, senderPublicK
 
 function connect(user) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${port}`, { headers: { Cookie: cookieFor(user) } });
+    const ws = new WebSocket(`ws://localhost:${port}`, {
+      headers: {
+        Cookie: cookieFor(user),
+        Origin: "http://localhost:5173",
+      },
+    });
     ws.inbox = [];
     ws.on("message", (raw, isBinary) =>
       ws.inbox.push(

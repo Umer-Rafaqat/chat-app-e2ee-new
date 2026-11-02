@@ -1,12 +1,35 @@
 const { parseCookie } = require("cookie");
 const jwt = require("jsonwebtoken");
-const { JWT_SECRET } = require("../config/env");
+const { JWT_SECRET, CLIENT_URLS, NODE_ENV } = require("../config/env");
 const User = require("../models/User");
 const connectionManager = require("./connection.manager");
 const handleMessage = require("./message.handler");
 
+function isLocalhostOrigin(origin) {
+  try {
+    const hostname = new URL(origin).hostname;
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
 // Runs on the raw HTTP upgrade request, before the socket is accepted.
 async function authenticateUpgradeRequest(req) {
+  const origin = req.headers.origin;
+  const isLocalhost = origin && isLocalhostOrigin(origin);
+  const originAllowed =
+    CLIENT_URLS.includes(origin) ||
+    (NODE_ENV === "development" && isLocalhost);
+
+  if (!originAllowed || (NODE_ENV === "production" && isLocalhost)) {
+    throw new Error("Origin not allowed");
+  }
+
   // console.log("Upgrade request cookie header:", req.headers.cookie);
   const cookies = parseCookie(req.headers.cookie || "");
   const token = cookies.token;
@@ -15,7 +38,7 @@ async function authenticateUpgradeRequest(req) {
     throw new Error("No auth token provided");
   }
 
-  const decoded = jwt.verify(token, JWT_SECRET); // throws on invalid/expired
+  const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
   const user = await User.findById(decoded.id);
 
   if (!user) {
@@ -41,9 +64,19 @@ function handleConnection(ws, user) {
     JSON.stringify({ type: "connection", data: { status: "connected" } }),
   );
 
-  ws.on("message", (raw, isBinary) =>
-    handleMessage(ws, userId, raw, isBinary),
-  );
+  ws.on("message", (raw, isBinary) => {
+    handleMessage(ws, userId, raw, isBinary).catch((error) => {
+      console.error("WebSocket message handler failed:", error);
+      if (ws.readyState === ws.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            data: { message: "Failed to process message" },
+          }),
+        );
+      }
+    });
+  });
 
   ws.on("close", () => {
     connectionManager.removeConnection(userId, ws);

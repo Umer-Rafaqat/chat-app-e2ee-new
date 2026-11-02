@@ -3,6 +3,7 @@ const conversationService = require("../services/conversation.service");
 const connectionManager = require("./connection.manager");
 const handleGroupEvent = require("./group.handler");
 const { handleCallEvent, handleAudioFrame } = require("./call.handler");
+const { CLOUDINARY_CLOUD_NAME } = require("../config/env");
 
 function send(ws, payload) {
   if (ws && ws.readyState === ws.OPEN) {
@@ -25,6 +26,13 @@ async function handleMessage(ws, senderId, raw, isBinary = false) {
       data: {
         message: "Invalid JSON",
       },
+    });
+  }
+
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return send(ws, {
+      type: "error",
+      data: { message: "Message payload must be an object" },
     });
   }
 
@@ -114,10 +122,15 @@ async function handleMessage(ws, senderId, raw, isBinary = false) {
   if (type === "image") {
     // Images are NOT end-to-end encrypted yet — only text messages are.
     // Uploaded via the existing REST /upload endpoint before this event.
-    if (!data?.imageUrl) {
+    if (
+      typeof data?.imageUrl !== "string" ||
+      !data.imageUrl.startsWith(
+        `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/`,
+      )
+    ) {
       return send(ws, {
         type: "error",
-        data: { message: "imageUrl is required" },
+        data: { message: "A valid Cloudinary image URL is required" },
       });
     }
     payload = { imageUrl: data.imageUrl };
