@@ -42,10 +42,13 @@ async function findOrCreateConversation(userId, otherUserId) {
     .map((id) => new mongoose.Types.ObjectId(id))
     .sort((a, b) => a.toString().localeCompare(b.toString()));
 
-  let conversation = await Conversation.findOne({ participants });
+  let conversation = await Conversation.findOne({
+    participants,
+    isGroup: false,
+  });
 
   if (!conversation) {
-    conversation = await Conversation.create({ participants });
+    conversation = await Conversation.create({ participants, isGroup: false });
   }
 
   return Conversation.populate(conversation, {

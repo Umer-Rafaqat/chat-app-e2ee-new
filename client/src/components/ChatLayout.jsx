@@ -5,6 +5,7 @@ import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import CreateGroupModal from "./modals/CreateGroupModal";
 import GroupMembersModal from "./modals/GroupMembersModal";
+import VoiceCallModal from "./modals/VoiceCallModal";
 
 function ChatLayout({
   conversations,
@@ -16,6 +17,7 @@ function ChatLayout({
   isAdmin = false,
   knownUsers,
   connectionStatus,
+  voiceCall,
   notifications = [],
   onSelectNotification,
   pushStatus,
@@ -49,6 +51,7 @@ function ChatLayout({
           activeConversation={activeConversation}
           currentUserId={currentUserId}
           connectionStatus={connectionStatus}
+          voiceCall={voiceCall}
           notifications={notifications}
           pushStatus={pushStatus}
           onEnablePushNotifications={onEnablePushNotifications}
@@ -105,6 +108,14 @@ function ChatLayout({
           onClose={() => setIsMembersModalOpen(false)}
         />
       )}
+
+      <VoiceCallModal
+        call={voiceCall?.call}
+        onAccept={voiceCall?.acceptCall}
+        onReject={voiceCall?.rejectCall}
+        onEnd={voiceCall?.endCall}
+        onToggleMute={voiceCall?.toggleMute}
+      />
     </div>
   );
 }

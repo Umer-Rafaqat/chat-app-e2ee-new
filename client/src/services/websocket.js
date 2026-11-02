@@ -22,6 +22,7 @@ class WebSocketService {
     this._emitStatus("connecting");
 
     this.ws = new WebSocket(this.url);
+    this.ws.binaryType = "arraybuffer";
 
     this.ws.onopen = () => {
       this._emitStatus("connected");
@@ -43,6 +44,13 @@ class WebSocketService {
     };
 
     this.ws.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        this.messageListeners.forEach((listener) =>
+          listener({ type: "call:audio", data: event.data }),
+        );
+        return;
+      }
+
       let parsed;
 
       try {
@@ -70,6 +78,19 @@ class WebSocketService {
 
     this.ws.send(JSON.stringify(payload));
 
+    return true;
+  }
+
+  sendBinary(data) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    if (this.ws.bufferedAmount > 64 * 1024) {
+      return false;
+    }
+
+    this.ws.send(data);
     return true;
   }
 

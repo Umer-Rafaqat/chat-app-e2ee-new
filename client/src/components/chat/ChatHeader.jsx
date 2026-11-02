@@ -7,6 +7,7 @@ function ChatHeader({
   activeConversation,
   currentUserId,
   connectionStatus,
+  voiceCall,
   notifications,
   pushStatus,
   onEnablePushNotifications,
@@ -33,9 +34,13 @@ function ChatHeader({
     : "Choose a conversation to start chatting";
 
   const isConnected = connectionStatus === "connected";
+  const canStartCall =
+    activeConversation &&
+    voiceCall?.call.status === "idle" &&
+    isConnected;
 
   return (
-    <header className="chat-header">
+    <header className="chat-header relative">
       <div className="flex min-w-0 items-center gap-3">
         {activeConversation ? (
           <Avatar
@@ -63,6 +68,18 @@ function ChatHeader({
       </div>
 
       <div className="flex items-center gap-1.5">
+        {canStartCall && (
+          <button
+            type="button"
+            onClick={voiceCall.startCall}
+            className="header-action px-3 text-xs font-semibold"
+            aria-label={`Start ${activeConversation.isGroup ? "group " : ""}voice call with ${title}`}
+            title={activeConversation.isGroup ? "Start group voice call" : "Start voice call"}
+          >
+            Call
+          </button>
+        )}
+
         {activeConversation?.isGroup && (
           <button
             type="button"
@@ -126,6 +143,19 @@ function ChatHeader({
           <span className="hidden sm:inline">Logout</span>
         </button>
       </div>
+      {voiceCall?.call.error && (
+        <div className="absolute left-1/2 top-full z-30 mt-1 -translate-x-1/2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700 shadow-lg" role="alert">
+          <span>{voiceCall.call.error}</span>
+          <button
+            type="button"
+            onClick={voiceCall.clearCallError}
+            className="ml-2 font-semibold"
+            aria-label="Dismiss voice call error"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
     </header>
   );
 }

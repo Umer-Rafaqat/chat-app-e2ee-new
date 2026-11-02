@@ -95,6 +95,11 @@ async function loginUser({ email, password }) {
       );
     }
 
+    // Once the lock window expires, the user should start a fresh cycle.
+    // Leaving the prior lock level or failure count in place would make the
+    // next failed attempt escalate immediately instead of beginning a new block.
+    user.loginFailedAttempts = 0;
+    user.loginLockLevel = 0;
     user.loginLockedUntil = null;
 
     await user.save();

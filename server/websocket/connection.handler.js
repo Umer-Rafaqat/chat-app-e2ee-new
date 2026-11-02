@@ -41,7 +41,9 @@ function handleConnection(ws, user) {
     JSON.stringify({ type: "connection", data: { status: "connected" } }),
   );
 
-  ws.on("message", (raw) => handleMessage(ws, userId, raw));
+  ws.on("message", (raw, isBinary) =>
+    handleMessage(ws, userId, raw, isBinary),
+  );
 
   ws.on("close", () => {
     connectionManager.removeConnection(userId, ws);

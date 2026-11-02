@@ -11,9 +11,7 @@ async function getAllUsers(excludeUserId) {
 }
 
 async function getUserById(id) {
-  const user = await User.findById(id).select(
-    "name email createdAt publicKey",
-  );
+  const user = await User.findById(id).select("name email createdAt publicKey");
   if (!user) {
     throw new AppError("User not found", 404);
   }

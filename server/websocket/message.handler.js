@@ -2,6 +2,7 @@ const messageService = require("../services/message.service");
 const conversationService = require("../services/conversation.service");
 const connectionManager = require("./connection.manager");
 const handleGroupEvent = require("./group.handler");
+const { handleCallEvent, handleAudioFrame } = require("./call.handler");
 
 function send(ws, payload) {
   if (ws && ws.readyState === ws.OPEN) {
@@ -9,7 +10,11 @@ function send(ws, payload) {
   }
 }
 
-async function handleMessage(ws, senderId, raw) {
+async function handleMessage(ws, senderId, raw, isBinary = false) {
+  if (isBinary) {
+    return handleAudioFrame(ws, senderId, raw);
+  }
+
   let parsed;
 
   try {
@@ -24,6 +29,10 @@ async function handleMessage(ws, senderId, raw) {
   }
 
   const { type, conversationId, data = {} } = parsed;
+
+  if (typeof type === "string" && type.startsWith("call:")) {
+    return handleCallEvent(ws, senderId, { type, conversationId, data });
+  }
 
   /*
    * Admin-only group management (group:create | group:update | group:delete).

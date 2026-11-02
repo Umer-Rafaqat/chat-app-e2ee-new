@@ -11,6 +11,8 @@ function useWebSocket(onEvent) {
 
     sendMessage,
 
+    sendBinary,
+
     setActiveConversation,
 
     clearActiveConversation,
@@ -28,6 +30,8 @@ function useWebSocket(onEvent) {
     status,
 
     sendMessage,
+
+    sendBinary,
 
     setActiveConversation,
 

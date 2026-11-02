@@ -215,7 +215,13 @@ function connect(user) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://localhost:${port}`, { headers: { Cookie: cookieFor(user) } });
     ws.inbox = [];
-    ws.on("message", (raw) => ws.inbox.push(JSON.parse(raw.toString())));
+    ws.on("message", (raw, isBinary) =>
+      ws.inbox.push(
+        isBinary
+          ? { type: "binary", data: raw }
+          : JSON.parse(raw.toString()),
+      ),
+    );
     ws.on("open", () => resolve(ws));
     ws.on("error", reject);
   });
@@ -322,6 +328,71 @@ test("group: every current member can decrypt, a message not wrapped for everyon
   const wsBob = await connect(bob);
   const wsCarol = await connect(carol);
 
+  wsAdmin.send(
+    JSON.stringify({
+      type: "call:start",
+      conversationId,
+      data: { sampleRate: 48000 },
+    }),
+  );
+  const incomingBob = await waitFor(wsBob, (event) => event.type === "call:incoming");
+  const incomingCarol = await waitFor(
+    wsCarol,
+    (event) => event.type === "call:incoming",
+  );
+  assert.ok(incomingBob && incomingCarol);
+  assert.equal(incomingBob.data.isGroup, true);
+  const groupCallId = incomingBob.data.callId;
+
+  wsBob.send(
+    JSON.stringify({
+      type: "call:accept",
+      data: { callId: groupCallId, sampleRate: 44100 },
+    }),
+  );
+  const acceptedByAdmin = await waitFor(
+    wsAdmin,
+    (event) => event.type === "call:accepted",
+  );
+  assert.ok(acceptedByAdmin);
+  assert.equal(acceptedByAdmin.data.participant.id, String(bob._id));
+  assert.equal(
+    wsCarol.inbox.some(
+      (event) => event.type === "call:accepted" && event.data.callId === groupCallId,
+    ),
+    false,
+  );
+
+  const groupPcm = Buffer.alloc(20);
+  groupPcm.writeUInt32LE(48000, 0);
+  Buffer.from(String(admin._id), "hex").copy(groupPcm, 4);
+  Buffer.from(new Float32Array([0.1]).buffer).copy(groupPcm, 16);
+  wsAdmin.send(groupPcm, { binary: true });
+  const audioForBob = await waitFor(wsBob, (event) => event.type === "binary");
+  assert.ok(audioForBob, "audio reaches the member who joined");
+  assert.deepEqual(audioForBob.data, groupPcm);
+  assert.equal(
+    wsCarol.inbox.some((event) => event.type === "binary"),
+    false,
+    "audio is not relayed to a member who has not joined",
+  );
+
+  wsCarol.send(
+    JSON.stringify({
+      type: "call:accept",
+      data: { callId: groupCallId, sampleRate: 48000 },
+    }),
+  );
+  const acceptedByCarol = await waitFor(
+    wsCarol,
+    (event) =>
+      event.type === "call:accepted" && event.data.participant.id === String(carol._id),
+  );
+  assert.ok(acceptedByCarol);
+  wsAdmin.send(groupPcm, { binary: true });
+  const audioForCarol = await waitFor(wsCarol, (event) => event.type === "binary");
+  assert.ok(audioForCarol, "audio reaches every joined group-call member");
+
   const plaintext = "Deploying at 9am, everyone ready?";
   const allParticipants = [
     { userId: String(admin._id), publicKey: identities.admin.publicKeyJwk },
@@ -400,4 +471,84 @@ test("notifications never carry message content for encrypted text (server can't
   assert.ok(notification);
   assert.equal(notification.data.content, "New message");
   [wsAlice, wsBob].forEach((w) => w.close());
+});
+
+test("1-on-1 voice calls relay binary audio only to the accepted conversation peer", async () => {
+  const alice = makeUser("voice-alice");
+  const bob = makeUser("voice-bob");
+  const stranger = makeUser("voice-stranger");
+  const conversation = await api()
+    .post("/api/conversations")
+    .set(as(alice))
+    .send({ participantId: String(bob._id) });
+  assert.equal(conversation.status, 200);
+
+  const wsAlice = await connect(alice);
+  const wsBob = await connect(bob);
+  const wsStranger = await connect(stranger);
+  const conversationId = conversation.body.data._id;
+
+  wsStranger.send(
+    JSON.stringify({
+      type: "call:start",
+      conversationId,
+      data: { receiverId: String(alice._id), sampleRate: 48000 },
+    }),
+  );
+  const unauthorizedCall = await waitFor(
+    wsStranger,
+    (event) => event.type === "call:error",
+  );
+  assert.match(unauthorizedCall?.data.message || "", /authorized|conversation/i);
+
+  wsAlice.send(
+    JSON.stringify({
+      type: "call:start",
+      conversationId,
+      data: { receiverId: String(bob._id), sampleRate: 48000 },
+    }),
+  );
+  const incoming = await waitFor(wsBob, (event) => event.type === "call:incoming");
+  const ringing = await waitFor(wsAlice, (event) => event.type === "call:ringing");
+  assert.ok(incoming && ringing);
+  assert.equal(incoming.data.callerId, String(alice._id));
+
+  wsBob.send(
+    JSON.stringify({
+      type: "call:accept",
+      data: { callId: incoming.data.callId, sampleRate: 44100 },
+    }),
+  );
+  const acceptedByAlice = await waitFor(
+    wsAlice,
+    (event) => event.type === "call:accepted",
+  );
+  const acceptedByBob = await waitFor(
+    wsBob,
+    (event) => event.type === "call:accepted",
+  );
+  assert.ok(acceptedByAlice && acceptedByBob);
+  assert.equal(acceptedByAlice.data.sampleRate, 44100);
+  assert.equal(acceptedByBob.data.sampleRate, 48000);
+
+  const pcm = Buffer.alloc(16 + 12);
+  pcm.writeUInt32LE(48000, 0);
+  Buffer.from(String(alice._id), "hex").copy(pcm, 4);
+  Buffer.from(new Float32Array([0.1, -0.2, 0.3]).buffer).copy(pcm, 16);
+  wsAlice.send(pcm, { binary: true });
+  const relayed = await waitFor(wsBob, (event) => event.type === "binary");
+  assert.ok(relayed);
+  assert.deepEqual(relayed.data, pcm);
+  assert.equal(wsStranger.inbox.some((event) => event.type === "binary"), false);
+
+  wsAlice.send(
+    JSON.stringify({
+      type: "call:end",
+      data: { callId: incoming.data.callId },
+    }),
+  );
+  const endedByBob = await waitFor(wsBob, (event) => event.type === "call:ended");
+  assert.equal(endedByBob?.data.reason, "ended");
+
+  [wsAlice, wsBob, wsStranger].forEach((socket) => socket.close());
 });

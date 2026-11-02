@@ -32,14 +32,16 @@ export function WebSocketProvider({ children }) {
   // `data` is either:
   //   { imageUrl }                     for type "image" (not E2EE'd)
   //   { ciphertext, iv, keys }         for type "message" (E2EE'd — see lib/e2ee.js)
-  // This component stays crypto-agnostic; it just forwards whatever the
-  // caller already encrypted.
+  // Message and signaling payloads use JSON; live voice PCM uses binary
+  // WebSocket frames through sendBinary below.
   const sendMessage = useCallback(
     (conversationId, data, type = "message") => {
-      service.send({ type, conversationId, data });
+      return service.send({ type, conversationId, data });
     },
     [service],
   );
+
+  const sendBinary = useCallback((data) => service.sendBinary(data), [service]);
 
   /*
    * Set currently open conversation.
@@ -72,6 +74,8 @@ export function WebSocketProvider({ children }) {
         status,
 
         sendMessage,
+
+        sendBinary,
 
         setActiveConversation,
 

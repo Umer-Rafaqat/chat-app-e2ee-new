@@ -7,6 +7,7 @@ import useChatPush from "../hooks/chat/useChatPush";
 import useChatRealtime, {
   normalizeNotification,
 } from "../hooks/chat/useChatRealtime";
+import useVoiceCall from "../hooks/chat/useVoiceCall";
 import {
   decryptMessage,
   encryptMessage,
@@ -51,6 +52,11 @@ function Chat() {
     setNotifications,
     setConversations,
     setActiveConversation,
+  });
+  const voiceCall = useVoiceCall({
+    activeConversation,
+    connectionStatus,
+    currentUserId: myUserId,
   });
 
   const loadMessages = useCallback(
@@ -215,6 +221,7 @@ function Chat() {
       isAdmin={isAdmin}
       knownUsers={[...(activeConversation?.participants || []), ...users]}
       connectionStatus={connectionStatus}
+      voiceCall={voiceCall}
       notifications={notifications}
       pushStatus={pushStatus}
       onEnablePushNotifications={handleEnablePushNotifications}

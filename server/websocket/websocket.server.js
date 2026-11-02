@@ -5,7 +5,7 @@ const {
 } = require("./connection.handler");
 
 function attachWebSocketServer(httpServer) {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
 
   httpServer.on("upgrade", async (req, socket, head) => {
     try {
