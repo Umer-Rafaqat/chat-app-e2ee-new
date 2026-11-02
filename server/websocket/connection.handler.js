@@ -1,9 +1,12 @@
-const { parseCookie } = require("cookie");
 const jwt = require("jsonwebtoken");
 const { JWT_SECRET, CLIENT_URLS, NODE_ENV } = require("../config/env");
 const User = require("../models/User");
 const connectionManager = require("./connection.manager");
 const handleMessage = require("./message.handler");
+
+let parseCookiePromise;
+const getParseCookie = () =>
+  (parseCookiePromise ??= import("cookie").then((m) => m.parseCookie));
 
 function isLocalhostOrigin(origin) {
   try {
@@ -31,6 +34,7 @@ async function authenticateUpgradeRequest(req) {
   }
 
   // console.log("Upgrade request cookie header:", req.headers.cookie);
+  const parseCookie = await getParseCookie();
   const cookies = parseCookie(req.headers.cookie || "");
   const token = cookies.token;
 
